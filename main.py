@@ -368,48 +368,20 @@ def paypal_check():
             files=files,
         )
         
-        # Parse response to extract issue and description
-        try:
-            resp_json = response.json()
-            
-            # Check if successful
-            if resp_json.get('success') == True:
-                return jsonify({
-                    "Response": "APPROVED",
-                    "Description": "Payment successful"
-                })
-            
-            # Extract error details
-            if 'data' in resp_json and 'error' in resp_json['data']:
-                error = resp_json['data']['error']
-                details = error.get('details', [])
-                
-                if details:
-                    issue = details[0].get('issue', 'UNKNOWN')
-                    description = details[0].get('description', 'Unknown error')
-                    return jsonify({
-                        "Response": issue,
-                        "Description": description
-                    })
-                else:
-                    return jsonify({
-                        "Response": error.get('name', 'ERROR'),
-                        "Description": error.get('message', 'Unknown error')
-                    })
-            else:
-                return jsonify({
-                    "Response": "UNKNOWN",
-                    "Description": "Unexpected response format"
-                })
-                
-        except:
-            return jsonify({
-                "Response": "ERROR",
-                "Description": "Failed to parse response"
-            })
+        # Return exact response with full card
+        resp_json = response.json()
+        
+        return jsonify({
+            "Card": card_number,
+            "Success": resp_json.get('success', False),
+            "Response": resp_json.get('data', {}).get('error', {}).get('details', [{}])[0].get('issue', resp_json.get('data', {}).get('error', {}).get('name', 'UNKNOWN')) if not resp_json.get('success') else "SUCCESS",
+            "Description": resp_json.get('data', {}).get('error', {}).get('details', [{}])[0].get('description', resp_json.get('data', {}).get('error', {}).get('message', '')) if not resp_json.get('success') else ""
+        })
         
     except Exception as e:
         return jsonify({
+            "Card": card_number,
+            "Success": False,
             "Response": "ERROR",
             "Description": str(e)
         })
